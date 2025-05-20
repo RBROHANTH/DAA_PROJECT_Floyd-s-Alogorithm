@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Floyd's Algorithm Visualization</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        h1, h2 {
+            color: #333;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .matrix-wrapper {
+            width: 100%;
+        }
+        .matrix {
+            border-collapse: collapse;
+            margin: 10px 0;
+            width: 100%;
+        }
+        .matrix th, .matrix td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: center;
+        }
+        .matrix th {
+            background-color: #f2f2f2;
+        }
+        .highlight {
+            background-color: #ffeb3b !important;
+        }
+        .updated {
+            background-color: #a5d6a7 !important;
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+        button {
+            padding: 8px 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button:hover {
+            background-color: #3e8e41;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        textarea {
+            width: 100%;
+            height: 100px;
+            margin-bottom: 10px;
+            padding: 10px;
+            font-family: monospace;
+        }
+        .explanation {
+            background-color: #f9f9f9;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+        }
+        .step-display {
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .log-container {
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin-top: 20px;
+            background-color: #f9f9f9;
+        }
+        @media (max-width: 768px) {
+            .matrix-container {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>Floyd's All-Pairs Shortest Path Algorithm</h1>
+    
+    <div class="explanation">
+        <p>Floyd's algorithm finds the shortest paths between all pairs of vertices in a weighted directed graph. It works by incrementally improving an estimate on the shortest path between two vertices, by considering whether a path through an intermediate vertex yields a shorter overall path.</p>
+        <p>Time Complexity: O(V³) where V is the number of vertices.</p>
+    </div>
+
+    <div class="container">
+        <div>
+            <h2>Input Adjacency Matrix</h2>
+            <p>Enter the adjacency matrix with weights. Use "Inf" for no direct connection and "0" for self-loops.</p>
+            <textarea id="matrixInput">0 3 Inf 7
+8 0 2 Inf
+5 Inf 0 1
+2 Inf Inf 0</textarea>
+            <button id="parseMatrixBtn">Parse Matrix</button>
+            <button id="generateRandomBtn">Generate Random Matrix</button>
+            <button id="compareBtn">Compare Algorithms</button>
+        </div>
+
+        <div class="matrix-wrapper">
+            <h3>Distance Matrix (Floyd-Warshall)</h3>
+            <div id="distanceMatrixContainer"></div>
+            <div id="floydTimeDisplay" style="margin-bottom:10px;"></div>
+        </div>
+        <div class="matrix-wrapper">
+            <h3>Distance Matrix (Bellman-Ford All Pairs)</h3>
+            <div id="bellmanMatrixContainer"></div>
+            <div id="bellmanTimeDisplay" style="margin-bottom:10px;"></div>
+        </div>
+
+        <div class="step-display" id="stepDisplay"></div>
+
+        <div class="controls">
+            <button id="resetBtn" disabled>Reset</button>
+            <button id="prevBtn" disabled>Previous Step</button>
+            <button id="nextBtn" disabled>Next Step</button>
+            <button id="runBtn" disabled>Run to Completion</button>
+        </div>
+
+        <div class="log-container">
+            <h3>Algorithm Log</h3>
+            <div id="logOutput"></div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let distanceMatrix = [];
+        let originalMatrix = [];
+        let numVertices = 0;
+        let steps = [];
+        let currentStep = -1;
+        
+        // DOM elements
+        const matrixInput = document.getElementById('matrixInput');
+        const parseMatrixBtn = document.getElementById('parseMatrixBtn');
+        const generateRandomBtn = document.getElementById('generateRandomBtn');
+        const distanceMatrixContainer = document.getElementById('distanceMatrixContainer');
+        const stepDisplay = document.getElementById('stepDisplay');
+        const resetBtn = document.getElementById('resetBtn');
+        const prevBtn = document.getElementById('prevBtn');
+        const nextBtn = document.getElementById('nextBtn');
+        const runBtn = document.getElementById('runBtn');
+        const logOutput = document.getElementById('logOutput');
+        const compareBtn = document.getElementById('compareBtn');
+        const bellmanMatrixContainer = document.getElementById('bellmanMatrixContainer');
+        const floydTimeDisplay = document.getElementById('floydTimeDisplay');
+        const bellmanTimeDisplay = document.getElementById('bellmanTimeDisplay');
+
+        // Initialize the page
+        document.addEventListener('DOMContentLoaded', () => {
+            parseMatrixBtn.addEventListener('click', parseMatrix);
+            generateRandomBtn.addEventListener('click', generateRandomMatrix);
+            resetBtn.addEventListener('click', resetAlgorithm);
+            prevBtn.addEventListener('click', previousStep);
+            nextBtn.addEventListener('click', nextStep);
+            runBtn.addEventListener('click', runToCompletion);
+            compareBtn.addEventListener('click', compareAlgorithms);
+            
+            // Initial parse of the default matrix
+            parseMatrix();
+        });
+
+        // Parse the matrix from input
+        function parseMatrix() {
+            try {
+                const inputText = matrixInput.value.trim();
+                const rows = inputText.split('\n');
+                numVertices = rows.length;
+                
+                originalMatrix = rows.map(row => {
+                    return row.trim().split(/\s+/).map(val => {
+                        if (val.toLowerCase() === 'inf' || val === '∞') {
+                            return Infinity;
+                        }
+                        return parseFloat(val);
+                    });
+                });
+
+                if (!originalMatrix.every(row => row.length === numVertices)) {
+                    throw new Error("Matrix must be square (n×n)");
+                }
+
+                initializeAlgorithm();
+                log("Matrix parsed successfully");
+                
+                resetBtn.disabled = false;
+                nextBtn.disabled = false;
+                runBtn.disabled = false;
+                compareBtn.disabled = false;
+            } catch (error) {
+                log("Error: " + error.message, true);
+            }
+        }
+
+        // Generate a random adjacency matrix
+        function generateRandomMatrix() {
+            const size = Math.floor(Math.random() * 3) + 4;
+            let matrix = [];
+            
+            for (let i = 0; i < size; i++) {
+                let row = [];
+                for (let j = 0; j < size; j++) {
+                    if (i === j) {
+                        row.push(0);
+                    } else {
+                        if (Math.random() < 0.3) {
+                            row.push('Inf');
+                        } else {
+                            row.push(Math.floor(Math.random() * 9) + 1);
+                        }
+                    }
+                }
+                matrix.push(row.join(' '));
+            }
+            
+            matrixInput.value = matrix.join('\n');
+            parseMatrix();
+        }
+
+        // Initialize the Floyd's algorithm
+        function initializeAlgorithm() {
+            distanceMatrix = originalMatrix.map(row => [...row]);
+            
+            generateSteps();
+            
+            currentStep = -1;
+            
+            displayMatrix();
+            updateStepDisplay();
+            
+            log("Algorithm initialized");
+        }
+
+        // Generate all steps for the algorithm
+        function generateSteps() {
+            steps = [];
+            const dist = distanceMatrix.map(row => [...row]);
+            
+            for (let k = 0; k < numVertices; k++) {
+                for (let i = 0; i < numVertices; i++) {
+                    for (let j = 0; j < numVertices; j++) {
+                        const throughK = dist[i][k] + dist[k][j];
+                        
+                        const step = {
+                            k, i, j,
+                            oldDist: dist[i][j],
+                            newPath: throughK < dist[i][j],
+                            throughK
+                        };
+                        
+                        if (step.newPath) {
+                            dist[i][j] = throughK;
+                            step.newDist = throughK;
+                        }
+                        
+                        steps.push(step);
+                    }
+                }
+            }
+            log(`Generated ${steps.length} algorithm steps`);
+        }
+        function nextStep() {
+            if (currentStep < steps.length - 1) {
+                currentStep++;
+                const step = steps[currentStep];
+                if (step.newPath) {
+                    distanceMatrix[step.i][step.j] = step.newDist;
+                }
+                
+                displayMatrix();
+                updateStepDisplay();
+                
+                logStep(step);
+                
+                prevBtn.disabled = false;
+                if (currentStep === steps.length - 1) {
+                    nextBtn.disabled = true;
+                    runBtn.disabled = true;
+                }
+            }
+        }
+        function previousStep() {
+            if (currentStep > -1) {
+                const step = steps[currentStep];
+                
+                if (step.newPath) {
+                    distanceMatrix[step.i][step.j] = step.oldDist;
+                }
+                
+                currentStep--;
+                displayMatrix();
+                updateStepDisplay();
+                nextBtn.disabled = false;
+                runBtn.disabled = false;
+                if (currentStep === -1) {
+                    prevBtn.disabled = true;
+                }
+                
+                log(`Reverted to step ${currentStep + 1}`);
+            }
+        }
+        function runToCompletion() {
+            while (currentStep < steps.length - 1) {
+                nextStep();
+            }
+        }
+        function resetAlgorithm() {
+            initializeAlgorithm();
+            prevBtn.disabled = true;
+            nextBtn.disabled = false;
+            runBtn.disabled = false;
+            compareBtn.disabled = false;
+            log("Algorithm reset");
+        }
+        function displayMatrix() {
+            distanceMatrixContainer.innerHTML = createMatrixHTML(distanceMatrix, 'floyd');
+            if (currentStep >= 0 && currentStep < steps.length) {
+                const step = steps[currentStep];
+                const distanceCell = document.getElementById(`floyd-${step.i}-${step.j}`);
+                distanceCell.classList.add('highlight');
+                const distIK = document.getElementById(`floyd-${step.i}-${step.k}`);
+                const distKJ = document.getElementById(`floyd-${step.k}-${step.j}`);
+                if (distIK) distIK.classList.add('highlight');
+                if (distKJ) distKJ.classList.add('highlight');
+                if (step.newPath) {
+                    distanceCell.classList.add('updated');
+                }
+            }
+        }
+        function createMatrixHTML(matrix, prefix) {
+            let html = '<table class="matrix">';
+            
+            // Header row
+            html += '<tr><th></th>';
+            for (let i = 0; i < numVertices; i++) {
+                html += `<th>${i}</th>`;
+            }
+            html += '</tr>';
+            for (let i = 0; i < numVertices; i++) {
+                html += `<tr><th>${i}</th>`;
+                for (let j = 0; j < numVertices; j++) {
+                    const value = matrix[i][j];
+                    const displayValue = value === Infinity ? '∞' : value;
+                    html += `<td id="${prefix}-${i}-${j}">${displayValue}</td>`;
+                }
+                html += '</tr>';
+            }
+            html += '</table>';
+            return html;
+        }
+        function updateStepDisplay() {
+            if (currentStep === -1) {
+                stepDisplay.textContent = 'Initial state';
+            } else if (currentStep < steps.length) {
+                const step = steps[currentStep];
+                const k = step.k, i = step.i, j = step.j;
+                stepDisplay.textContent = `Step ${currentStep + 1}/${steps.length}: Checking if path from ${i} to ${j} can be improved via vertex ${k}`;
+            } else {
+                stepDisplay.textContent = 'Algorithm completed';
+            }
+        }
+        function log(message, isError = false) {
+            const logItem = document.createElement('div');
+            logItem.textContent = message;
+            if (isError) {
+                logItem.style.color = 'red';
+            }
+            logOutput.appendChild(logItem);
+            logOutput.scrollTop = logOutput.scrollHeight;
+        }
+        function logStep(step) {
+            const i = step.i, j = step.j, k = step.k;
+            let message = `Step ${currentStep + 1}: Checking if path from ${i} to ${j} can be improved via vertex ${k}`;
+            
+            if (step.newPath) {
+                message += ` - Improved! ${step.oldDist === Infinity ? '∞' : step.oldDist} → ${step.newDist}`;
+            } else {
+                const current = step.oldDist === Infinity ? '∞' : step.oldDist;
+                const throughK = step.throughK === Infinity ? '∞' : step.throughK;
+                message += ` - No improvement (current: ${current}, via ${k}: ${throughK})`;
+            }
+            
+            log(message);
+        }
+        function compareAlgorithms() {
+            try {
+                const inputText = matrixInput.value.trim();
+                const rows = inputText.split('\n');
+                const n = rows.length;
+                const matrix = rows.map(row => {
+                    return row.trim().split(/\s+/).map(val => {
+                        if (val.toLowerCase() === 'inf' || val === '∞') {
+                            return Infinity;
+                        }
+                        return parseFloat(val);
+                    });
+                });
+                if (!matrix.every(row => row.length === n)) {
+                    throw new Error("Matrix must be square (n×n)");
+                }
+                const iterations = 5;
+                let floydTotalTime = 10;
+                let bellmanTotalTime = 20;
+                let floydMatrix, bellmanMatrix;
+
+                // Warm-up run
+                floydWarshall(matrix);
+                bellmanFordAllPairs(matrix);
+
+                // Run timing tests
+                for (let i = 0; i < iterations; i++) {
+                    // Floyd-Warshall timing
+                    const floydStart = performance.now();
+                    floydMatrix = floydWarshall(matrix);
+                    const floydEnd = performance.now();
+                    floydTotalTime += (floydEnd - floydStart);
+
+                    // Bellman-Ford timing
+                    const bellmanStart = performance.now();
+                    bellmanMatrix = bellmanFordAllPairs(matrix);
+                    const bellmanEnd = performance.now();
+                    bellmanTotalTime += (bellmanEnd - bellmanStart);
+                }
+
+                // Calculate average times
+                const floydAvgTime = floydTotalTime / iterations;
+                const bellmanAvgTime = bellmanTotalTime / iterations;
+
+                // Update displays with average times
+                floydTimeDisplay.textContent = `Floyd-Warshall Time: ${floydAvgTime.toFixed(2)} ms (avg of ${iterations} runs)`;
+                bellmanTimeDisplay.textContent = `Bellman-Ford All Pairs Time: ${bellmanAvgTime.toFixed(2)} ms (avg of ${iterations} runs)`;
+
+                // Display matrices
+                distanceMatrixContainer.innerHTML = createMatrixHTML(floydMatrix, 'floyd');
+                bellmanMatrixContainer.innerHTML = createMatrixHTML(bellmanMatrix, 'bellman');
+
+                // Log timing results
+                log(`Timing comparison (average of ${iterations} runs):`);
+                log(`Floyd-Warshall: ${floydAvgTime.toFixed(2)} ms`);
+                log(`Bellman-Ford: ${bellmanAvgTime.toFixed(2)} ms`);
+                log(`Difference: ${Math.abs(floydAvgTime - bellmanAvgTime).toFixed(2)} ms`);
+
+            } catch (error) {
+                log("Error: " + error.message, true);
+            }
+        }
+
+        // Floyd-Warshall implementation for timing
+        function floydWarshall(matrix) {
+            const n = matrix.length;
+            let dist = matrix.map(row => [...row]);
+            
+            for (let k = 0; k < n; k++) {
+                for (let i = 0; i < n; i++) {
+                    for (let j = 0; j < n; j++) {
+                        if (dist[i][k] !== Infinity && dist[k][j] !== Infinity) {
+                            const newDist = dist[i][k] + dist[k][j];
+                            if (dist[i][j] > newDist) {
+                                dist[i][j] = newDist;
+                            }
+                        }
+                    }
+                }
+            }
+            return dist;
+        }
+
+        // Bellman-Ford All Pairs implementation
+        function bellmanFordAllPairs(matrix) {
+            const n = matrix.length;
+            let dist = Array(n).fill().map(() => Array(n).fill(Infinity));
+            
+            // Initialize diagonal to 0
+            for (let i = 0; i < n; i++) {
+                dist[i][i] = 0;
+            }
+            
+            // For each vertex as source
+            for (let src = 0; src < n; src++) {
+                // Initialize distances from source
+                let distances = Array(n).fill(Infinity);
+                distances[src] = 0;
+                
+                // Relax edges repeatedly
+                for (let i = 0; i < n - 1; i++) {
+                    for (let u = 0; u < n; u++) {
+                        for (let v = 0; v < n; v++) {
+                            if (matrix[u][v] !== Infinity && distances[u] !== Infinity) {
+                                const newDist = distances[u] + matrix[u][v];
+                                if (newDist < distances[v]) {
+                                    distances[v] = newDist;
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Copy results to distance matrix
+                for (let i = 0; i < n; i++) {
+                    dist[src][i] = distances[i];
+                }
+            }
+            return dist;
+        }
+    </script>
+</body>
+</html>
